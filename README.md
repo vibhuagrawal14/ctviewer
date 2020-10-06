@@ -1,7 +1,8 @@
 # CTViewer
 View volumetric (3D) CT images interactively in jupyter notebooks. Supports changing views (transposing) and windowing.
 
-![CTViewer](https://i.imgur.com/PoUEToj.gif)
+
+<img src="https://i.imgur.com/PoUEToj.gif" width="500"/>
 
 The following windows are available as presets, with custom windowing also available:
 
