@@ -15,9 +15,11 @@ class CTViewer:
     figsize: Size of the figure to be plotted. Defaults to (8, 8)
     """
     
-    def __init__(self, volume, figsize=(8,8)):
+    def __init__(self, volume, mask=None, figsize=(8,8), continuous_update=True):
         self.volume = volume
+        self.mask = mask
         self.figsize = figsize
+        self.continuous_update = continuous_update
         self.v = [np.min(volume), np.max(volume)]
         self.last_known_slice = 0
         
@@ -35,6 +37,21 @@ class CTViewer:
                         "Mediastinum": [50, 500],
                         "Stroke": [30, 30],
                         "CTA": [170, 600]}
+        
+        self.segments = {}
+        if self.mask is not None:
+            self.segments = {
+                f'{k}': ipyw.ToggleButton(
+                    value=True,
+                    description=f'Mask - {k}',
+                    disabled=False,
+                    button_style='', # 'success', 'info', 'warning', 'danger' or ''
+                    tooltip=f'Click to toggle mask {k}',
+                    icon='check' # (FontAwesome names without the `fa-` prefix)
+                )
+                for k in np.unique(self.mask[self.mask != 0])
+            }
+                
 
         ipyw.interact(self.check_if_custom_window,
                       view=ipyw.RadioButtons(
@@ -62,11 +79,11 @@ class CTViewer:
                       window_level=ipyw.IntText(
                           value=2000,
                           description='Window_level:',
-                          disabled=False) if window is "Custom" else ipyw.fixed(None),
+                          disabled=False) if window == "Custom" else ipyw.fixed(None),
                       window_width=ipyw.IntText(
                           value=4000,
                           description='Window_width:',
-                          disabled=False) if window is "Custom" else ipyw.fixed(None))
+                          disabled=False) if window == "Custom" else ipyw.fixed(None))
 
     def view_selection(self, view, window, window_level=None, window_width=None):
         """
@@ -75,11 +92,13 @@ class CTViewer:
         
         # Transpose the volume according to selected view
         self.vol = np.transpose(self.volume, self.orientations[view])
+        if self.mask is not None:
+            self.m = np.transpose(self.mask, self.orientations[view])
         maxZ = self.vol.shape[2] - 1
         
         # CT Windowing
-        if window is not "None":
-            if window is not "Custom":
+        if window != "None":
+            if window != "Custom":
                 window_level, window_width = self.windows[window]
             upper, lower = window_level + window_width//2, window_level - window_width//2
             self.vol = np.clip(self.vol, lower, upper)            
@@ -90,16 +109,27 @@ class CTViewer:
                                        max=maxZ,
                                        value=self.last_known_slice,
                                        step=1,
-                                       continuous_update=False, 
-                                       description='Image Slice:'))
+                                       continuous_update=self.continuous_update, 
+                                       description='Image Slice:'),
+                                       **self.segments)
         
-    def plot_slice(self, z):
+    def plot_slice(self, z, **kwargs):
         """
         Plot the selected slice.
         """
         self.last_known_slice = z
         self.fig = plt.figure(figsize=self.figsize)
-        plt.imshow(self.vol[:,:,z],
-                   cmap='gray', 
-                   vmin=self.v[0],
-                   vmax=self.v[1])
+
+        plt.imshow(self.vol[:,:,z], cmap='gray', vmin=self.v[0], vmax=self.v[1])
+        if self.mask is not None:
+            ignored_masks = [0]
+            for k, v in kwargs.items():
+                if not v:
+                    ignored_masks.append(int(k))
+            mask_ = np.logical_or.reduce([self.m[:,:,z] == i for i in ignored_masks])
+            masked = np.ma.masked_where(mask_, self.m[:,:,z])
+            plt.imshow(masked, 
+                       cmap='jet',
+                       alpha=0.2,
+                       vmin=0,
+                       vmax=len(self.segments))
